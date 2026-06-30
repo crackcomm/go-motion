@@ -1397,3 +1397,91 @@ func TestNextWordStartExhaustive(t *testing.T) {
 		}
 	}
 }
+
+func TestKMotionUpward(t *testing.T) {
+	text := []rune("hello\nworld\nfoo")
+
+	cases := []struct {
+		desc string
+		pos  int
+		want int
+	}{
+		{"k from line2 mid to line1 mid", 9, 3},
+		{"k from line3 to line2", 14, 8},
+		{"k from line2 start to line1 start", 6, 0},
+		{"k from line2 end to line1 end", 10, 4},
+	}
+
+	for _, c := range cases {
+		t.Run(c.desc, func(t *testing.T) {
+			var e Engine
+			result := e.Process(text, c.pos, Key('k'))
+			if result.Kind != ResultNavigate {
+				t.Fatalf("%s: got Kind=%d, want ResultNavigate", c.desc, result.Kind)
+			}
+			if result.Cursor != c.want {
+				t.Errorf("%s: got cursor=%d, want %d", c.desc, result.Cursor, c.want)
+			}
+		})
+	}
+}
+
+func TestKMotionUpwardEdgeCases(t *testing.T) {
+	cases := []struct {
+		desc string
+		text []rune
+		pos  int
+		want int
+	}{
+		{"k on first line, no-op", []rune("hello\nworld"), 3, 3},
+		{"k at very beginning", []rune("hello\nworld"), 0, 0},
+		{"k on single line, no-op", []rune("hello"), 3, 3},
+		{"k from long col to shorter line", []rune("hi\nworld"), 6, 2},
+		{"k from line3 to line2", []rune("aaa\nbbbb\ncccc"), 9, 4},
+	}
+
+	for _, c := range cases {
+		t.Run(c.desc, func(t *testing.T) {
+			var e Engine
+			result := e.Process(c.text, c.pos, Key('k'))
+			if result.Kind != ResultNavigate {
+				t.Fatalf("%s: got Kind=%d, want ResultNavigate", c.desc, result.Kind)
+			}
+			if result.Cursor != c.want {
+				t.Errorf("%s: got cursor=%d, want %d", c.desc, result.Cursor, c.want)
+			}
+		})
+	}
+}
+
+func TestKMotionWithCount(t *testing.T) {
+	text := []rune("aaa\nbbb\nccc\nddd")
+
+	cases := []struct {
+		desc string
+		pos  int
+		cnt  int
+		want int
+	}{
+		{"2k from line3 to line1", 8, 2, 0},
+		{"3k from line4 to line1", 12, 3, 0},
+		{"2k from line2 to line1", 4, 2, 0},
+	}
+
+	for _, c := range cases {
+		t.Run(c.desc, func(t *testing.T) {
+			var e Engine
+			// Feed count digits
+			for _, d := range fmt.Sprintf("%d", c.cnt) {
+				e.Process(text, c.pos, Key(rune(d)))
+			}
+			result := e.Process(text, c.pos, Key('k'))
+			if result.Kind != ResultNavigate {
+				t.Fatalf("%s: got Kind=%d, want ResultNavigate", c.desc, result.Kind)
+			}
+			if result.Cursor != c.want {
+				t.Errorf("%s: got cursor=%d, want %d", c.desc, result.Cursor, c.want)
+			}
+		})
+	}
+}

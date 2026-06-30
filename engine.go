@@ -812,16 +812,15 @@ func moveVertical(text []rune, cursor int, count int) int {
 
 	if count > 0 {
 		for range count {
-			// Find the \n at end of the current line.
-			end := lineStart
-			for end < n && text[end] != '\n' {
-				end++
+			// Scan to the \n at the end of the current line
+			for lineStart < n && text[lineStart] != '\n' {
+				lineStart++
 			}
-			if end >= n {
-				break // already at last line
+			if lineStart >= n {
+				break // Already at last line
 			}
-			// Move past \n to start of next line.
-			lineStart = end + 1
+			// Move past \n to start of next line
+			lineStart++
 			if lineStart >= n {
 				lineStart = n - 1
 				break
@@ -830,33 +829,29 @@ func moveVertical(text []rune, cursor int, count int) int {
 	} else {
 		for range -count {
 			if lineStart <= 0 {
-				break
+				break // Already at first line
 			}
-			// Walk backward from lineStart-1 to find the \n that
-			// terminates the previous line.
-			prevEnd := lineStart - 1
-			for prevEnd >= 0 && text[prevEnd] != '\n' {
-				prevEnd--
+			// text[lineStart-1] is the preceding \n.
+			// Scan backwards from lineStart-2 to find the previous \n.
+			lineStart -= 2
+			for lineStart >= 0 && text[lineStart] != '\n' {
+				lineStart--
 			}
-			// The target line starts at prevEnd + 1.
-			lineStart = prevEnd + 1
+			lineStart++ // Move forward to the character after \n
 		}
 	}
 
-	// Clamp column to the target line.
+	// Clamp column to the target line's length
 	lineEnd := lineStart
 	for lineEnd < n && text[lineEnd] != '\n' {
 		lineEnd++
 	}
-	maxCol := lineEnd - lineStart
-	if col > maxCol {
-		col = maxCol
-	}
 
-	pos := lineStart + col
+	pos := min(lineStart+col, lineEnd)
 	if pos >= n {
 		pos = n - 1
 	}
+
 	return pos
 }
 
