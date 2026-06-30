@@ -1436,7 +1436,7 @@ func TestKMotionUpwardEdgeCases(t *testing.T) {
 		{"k on first line, no-op", []rune("hello\nworld"), 3, 3},
 		{"k at very beginning", []rune("hello\nworld"), 0, 0},
 		{"k on single line, no-op", []rune("hello"), 3, 3},
-		{"k from long col to shorter line", []rune("hi\nworld"), 6, 2},
+		{"k from long col to shorter line", []rune("hi\nworld"), 6, 1},
 		{"k from line3 to line2", []rune("aaa\nbbbb\ncccc"), 9, 4},
 	}
 

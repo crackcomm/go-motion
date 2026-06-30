@@ -750,13 +750,17 @@ func (e *Engine) executeChar(text []rune, cursor int, ch rune, dir int, till boo
 func resolveMotionPos(text []rune, cursor int, mt motionType, count int) int {
 	switch mt {
 	case motionH:
-		pos := max(cursor-count, 0)
+		pos := cursor - count
+		start := LineStart(text, cursor)
+		if pos < start {
+			pos = start
+		}
 		return pos
 	case motionL:
 		pos := cursor + count
-		n := len(text)
-		if pos >= n {
-			pos = n - 1
+		end := LineEnd(text, cursor)
+		if pos > end {
+			pos = end
 		}
 		return pos
 	case motionJ:
@@ -831,46 +835,49 @@ func moveVertical(text []rune, cursor int, count int) int {
 	}
 
 	lineStart := LineStart(text, cursor)
-	col := max(cursor-lineStart, 0)
+	col := cursor - lineStart
+	if col < 0 {
+		col = 0
+	}
 
 	if count > 0 {
-		for range count {
-			// Scan to the \n at the end of the current line
-			for lineStart < n && text[lineStart] != '\n' {
-				lineStart++
+		for i := 0; i < count; i++ {
+			// Find the terminator for the current line
+			term := lineStart
+			for term < n && text[term] != '\n' {
+				term++
 			}
-			if lineStart >= n {
-				break // Already at last line
-			}
-			// Move past \n to start of next line
-			lineStart++
-			if lineStart >= n {
-				lineStart = n - 1
+			// If term >= n-1, there is no next line
+			if term >= n - 1 {
 				break
 			}
+			// Next line starts immediately after the terminator
+			lineStart = term + 1
 		}
 	} else {
-		for range -count {
-			if lineStart <= 0 {
-				break // Already at first line
+		for i := 0; i < -count; i++ {
+			if lineStart == 0 {
+				break // already at first line
 			}
-			// text[lineStart-1] is the preceding \n.
-			// Scan backwards from lineStart-2 to find the previous \n.
-			lineStart -= 2
-			for lineStart >= 0 && text[lineStart] != '\n' {
-				lineStart--
-			}
-			lineStart++ // Move forward to the character after \n
+			// lineStart-1 is the terminator of the previous line.
+			// The start of the previous line is LineStart of its terminator!
+			lineStart = LineStart(text, lineStart-1)
 		}
 	}
 
-	// Clamp column to the target line's length
-	lineEnd := lineStart
-	for lineEnd < n && text[lineEnd] != '\n' {
-		lineEnd++
+	lineEnd := LineEnd(text, lineStart)
+
+	// maxCol is the length of the line - 1
+	// If the line is empty, lineEnd == lineStart, so maxCol = 0.
+	// If the line is non-empty, maxCol = lineEnd - lineStart.
+	maxCol := lineEnd - lineStart
+
+	targetCol := col
+	if targetCol > maxCol {
+		targetCol = maxCol
 	}
 
-	pos := min(lineStart+col, lineEnd)
+	pos := lineStart + targetCol
 	if pos >= n {
 		pos = n - 1
 	}

@@ -40,17 +40,6 @@ func LineStart(text []rune, pos int) int {
 		pos = 0
 	}
 
-	// When cursor is on \n, it's at a line boundary.
-	if text[pos] == '\n' {
-		if pos == 0 || text[pos-1] == '\n' {
-			return pos
-		}
-		if pos+1 < len(text) {
-			return pos + 1
-		}
-		return pos
-	}
-
 	// Walk backward until we hit the start of text or a newline.
 	for pos > 0 && text[pos-1] != '\n' {
 		pos--

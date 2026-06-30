@@ -290,7 +290,7 @@ func TestLineStart(t *testing.T) {
 	cases := []struct{ pos, want int }{
 		{0, 0},
 		{3, 0}, // middle "hello" -> start 0
-		{5, 6}, // \n: this \n ENDS "hello", next line starts at 6
+		{5, 0}, // \n: this \n ENDS "hello", so it belongs to "hello" (start 0)
 		{6, 6}, // first of "world" -> 6
 		{8, 6}, // middle "world" -> 6
 	}
@@ -345,9 +345,7 @@ func TestFirstNonBlank(t *testing.T) {
 	cases := []struct{ pos, want int }{
 		{0, 2},  // ^ from start: skip 2 spaces -> 'h'(2)
 		{3, 2},  // ^ from 'e': go BACK to first non-blank -> 'h'(2)
-		{7, 10}, // ^ from \n: end of line1, go to first non-blank of... hmm
-		// Actually LineStart(7) on \n after "hello": walks back to 0, then skip spaces to 'h'(2).
-		// But conceptually from \n, maybe user expects next line? Let's test what we get.
+		{7, 2},  // ^ from \n: end of line1, belongs to line1 -> 'h'(2)
 		{9, 10}, // ^ from ' ': skip -> 'w'(10)
 	}
 	for _, c := range cases {
@@ -371,8 +369,8 @@ func TestLastNonBlank(t *testing.T) {
 	cases := []struct{ pos, want int }{
 		{0, 4},  // g_ from 'h': last non-blank -> 'o'(4)
 		{3, 4},  // from 'l': -> 'o'(4)
-		{7, 12}, // g_ from 'w': last non-blank on line 2 -> 'd'(12)
-		{8, 12}, // from 'o': -> 'd'(12)
+		{7, 4},  // g_ from \n: last non-blank on line1 -> 'o'(4)
+		{8, 12}, // from 'w': -> 'd'(12)
 	}
 	for _, c := range cases {
 		got := LastNonBlank(text, c.pos)
