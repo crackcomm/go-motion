@@ -71,6 +71,9 @@ func wordStart(text []rune, pos, count int, cf func(rune) Class) int {
 		// We approximate this by stopping at newline boundaries when
 		// we're skipping whitespace (a blank line is "\n\n" in our model).
 		for pos < n && cf(text[pos]) == Space {
+			if isBlankLine(text, pos) {
+				break
+			}
 			pos++
 		}
 
@@ -139,6 +142,9 @@ func wordBack(text []rune, pos, count int, cf func(rune) Class) int {
 		// Step 3a: skip whitespace backward.
 		// In neovim, this stops on empty lines (LINEEMPTY check).
 		for pos > 0 && cf(text[pos]) == Space {
+			if isBlankLine(text, pos) {
+				break
+			}
 			pos--
 		}
 
@@ -225,7 +231,12 @@ func wordEnd(text []rune, pos, count int, cf func(rune) Class) int {
 		} else {
 			// Step 4: at end of word (or whitespace).
 			// Skip whitespace, then move to end of next word.
+			isEol := false
 			for pos < n && cf(text[pos]) == Space {
+				if isBlankLine(text, pos) {
+					isEol = true
+					break
+				}
 				pos++
 			}
 			if pos >= n {
@@ -233,9 +244,11 @@ func wordEnd(text []rune, pos, count int, cf func(rune) Class) int {
 				break
 			}
 			// Move to end of this word.
-			cc := cf(text[pos])
-			for pos+1 < n && cf(text[pos+1]) == cc {
-				pos++
+			if !isEol {
+				cc := cf(text[pos])
+				for pos+1 < n && cf(text[pos+1]) == cc {
+					pos++
+				}
 			}
 		}
 
@@ -305,6 +318,9 @@ func wordEndBack(text []rune, pos, count int, cf func(rune) Class) int {
 		// Step 4: skip whitespace backward, landing on the last
 		// character of the previous word.
 		for pos > 0 && cf(text[pos]) == Space {
+			if isBlankLine(text, pos) {
+				break
+			}
 			pos--
 		}
 
@@ -333,6 +349,10 @@ func PrevBigwordEnd(text []rune, pos, count int) int {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+func isBlankLine(text []rune, pos int) bool {
+	return pos < len(text) && text[pos] == '\n' && (pos == 0 || text[pos-1] == '\n')
+}
 
 func clamp(pos, n int) int {
 	if pos < 0 {

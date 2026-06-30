@@ -114,6 +114,21 @@ func TestNextWordStart_multiline(t *testing.T) {
 	}
 }
 
+func TestNextWordStart_emptyLines(t *testing.T) {
+	text := []rune("a\n\n\nb")
+	cases := []struct{ pos, want int }{
+		{0, 2}, // w from 'a' -> empty line (pos 2)
+		{2, 3}, // w from empty line -> next empty line (pos 3)
+		{3, 4}, // w from empty line -> 'b' (pos 4)
+	}
+	for _, c := range cases {
+		got := NextWordStart(text, c.pos, 1)
+		if got != c.want {
+			t.Errorf("NextWordStart(%q, pos=%d) = %d, want %d", string(text), c.pos, got, c.want)
+		}
+	}
+}
+
 func TestPrevWordStart_basic(t *testing.T) {
 	text := []rune("hello world foo")
 	cases := []struct{ pos, count, want int }{
@@ -146,6 +161,21 @@ func TestPrevWordStart_punct(t *testing.T) {
 	}
 }
 
+func TestPrevWordStart_emptyLines(t *testing.T) {
+	text := []rune("a\n\n\nb")
+	cases := []struct{ pos, want int }{
+		{4, 3}, // b from 'b' -> empty line (pos 3)
+		{3, 2}, // b from empty line -> previous empty line (pos 2)
+		{2, 0}, // b from empty line -> 'a' (pos 0)
+	}
+	for _, c := range cases {
+		got := PrevWordStart(text, c.pos, 1)
+		if got != c.want {
+			t.Errorf("PrevWordStart(%q, pos=%d) = %d, want %d", string(text), c.pos, got, c.want)
+		}
+	}
+}
+
 func TestNextWordEnd_basic(t *testing.T) {
 	text := []rune("hello world foo")
 	cases := []struct{ pos, count, want int }{
@@ -167,6 +197,21 @@ func TestNextWordEnd_punct(t *testing.T) {
 	cases := []struct{ pos, want int }{
 		{0, 2}, // e from 'f': end of 'foo' = 'o'(2)
 		{3, 6}, // e from '.': skip (no space), end of 'bar' = 'r'(6)
+	}
+	for _, c := range cases {
+		got := NextWordEnd(text, c.pos, 1)
+		if got != c.want {
+			t.Errorf("NextWordEnd(%q, pos=%d) = %d, want %d", string(text), c.pos, got, c.want)
+		}
+	}
+}
+
+func TestNextWordEnd_emptyLines(t *testing.T) {
+	text := []rune("a\n\n\nb")
+	cases := []struct{ pos, want int }{
+		{0, 2}, // e from 'a' -> empty line (pos 2)
+		{2, 3}, // e from empty line -> next empty line (pos 3)
+		{3, 4}, // e from empty line -> 'b' (pos 4)
 	}
 	for _, c := range cases {
 		got := NextWordEnd(text, c.pos, 1)
