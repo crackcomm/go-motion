@@ -40,11 +40,13 @@ func LineStart(text []rune, pos int) int {
 		pos = 0
 	}
 
-	// When cursor is on \n, it's at a line boundary. Skip forward past
-	// all consecutive \n chars to the start of the next content line.
+	// When cursor is on \n, it's at a line boundary.
 	if text[pos] == '\n' {
-		for pos < len(text) && text[pos] == '\n' {
-			pos++
+		if pos == 0 || text[pos-1] == '\n' {
+			return pos
+		}
+		if pos+1 < len(text) {
+			return pos + 1
 		}
 		return pos
 	}
