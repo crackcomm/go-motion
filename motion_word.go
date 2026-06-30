@@ -77,16 +77,24 @@ func wordStart(text []rune, pos, count int, cf func(rune) Class) int {
 		count--
 	}
 
-	return clamp(pos, n)
+	return pos
 }
 
 // NextWordStart implements w — forward to start of next word.
 func NextWordStart(text []rune, pos, count int) int {
-	return wordStart(text, pos, count, Classify)
+	return clamp(wordStart(text, pos, count, Classify), len(text))
 }
 
 // NextBigwordStart implements W — forward to start of next WORD.
 func NextBigwordStart(text []rune, pos, count int) int {
+	return clamp(wordStart(text, pos, count, ClassifyBigword), len(text))
+}
+
+func nextWordStartOp(text []rune, pos, count int) int {
+	return wordStart(text, pos, count, Classify)
+}
+
+func nextBigwordStartOp(text []rune, pos, count int) int {
 	return wordStart(text, pos, count, ClassifyBigword)
 }
 

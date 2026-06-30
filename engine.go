@@ -467,6 +467,9 @@ func (e *Engine) handleG(text []rune, cursor int, r rune, cnt int) Result {
 		if line == 0 {
 			line = 1
 		}
+		if e.op != OpNone {
+			return e.execute(text, cursor, motionGG, line)
+		}
 		pos := MoveToLine(text, line)
 		e.Reset()
 		return Result{Kind: ResultNavigate, Cursor: pos}
@@ -661,6 +664,9 @@ func (e *Engine) handleChar(text []rune, cursor int, r rune, cnt int) Result {
 
 func (e *Engine) navigateMotion(text []rune, cursor int, mt motionType, cnt int) Result {
 	pos := resolveMotionPos(text, cursor, mt, cnt)
+	if pos >= len(text) && len(text) > 0 {
+		pos = len(text) - 1
+	}
 	e.Reset()
 	return Result{
 		Kind:   ResultNavigate,
@@ -753,6 +759,13 @@ func resolveMotionPos(text []rune, cursor int, mt motionType, count int) int {
 	case motionZero:
 		return LineStart(text, cursor)
 	case motionDollar:
+		if count > 1 {
+			pos := moveVertical(text, cursor, count-1)
+			if pos == cursor {
+				return cursor
+			}
+			return LineEnd(text, pos)
+		}
 		return LineEnd(text, cursor)
 	case motionCaret:
 		return FirstNonBlank(text, cursor)
@@ -905,6 +918,11 @@ func resolveMotionRange(text []rune, cursor int, mt motionType, count int) Range
 		return rangeFromCursor(text, cursor, dest, false)
 
 	case motionW, motionB, motionBigW, motionBigB, motionGe, motionBigGe:
+		if mt == motionW {
+			dest = nextWordStartOp(text, cursor, count)
+		} else if mt == motionBigW {
+			dest = nextBigwordStartOp(text, cursor, count)
+		}
 		return rangeFromCursor(text, cursor, dest, false)
 
 	case motionE, motionBigE:
@@ -923,6 +941,13 @@ func resolveMotionRange(text []rune, cursor int, mt motionType, count int) Range
 	case motionDollar:
 		// d$: delete from cursor to end of line, inclusive.
 		end := LineEnd(text, cursor)
+		if count > 1 {
+			pos := moveVertical(text, cursor, count-1)
+			if pos == cursor {
+				return Range{cursor, cursor}
+			}
+			end = LineEnd(text, pos)
+		}
 		if end < len(text) && text[end] != '\n' {
 			end++ // include the last char
 		}
@@ -936,16 +961,9 @@ func resolveMotionRange(text []rune, cursor int, mt motionType, count int) Range
 		}
 		return Range{cursor, end}
 
-	case motionOBrace:
-		dest := MoveParagraphBackward(text, cursor, count)
-		return Range{dest, cursor}
-
-	case motionCBrace:
-		dest := MoveParagraphForward(text, cursor, count)
-		if dest < len(text) {
-			dest++
-		}
-		return Range{cursor, dest}
+	case motionOBrace, motionCBrace:
+		dest := resolveMotionPos(text, cursor, mt, count)
+		return rangeFromCursor(text, cursor, dest, false)
 
 	case motionPercent:
 		return rangeFromCursor(text, cursor, dest, true)
@@ -1002,9 +1020,8 @@ func resolveCharRange(text []rune, cursor int, ch rune, dir int, till bool, coun
 	if dest < 0 {
 		return Range{cursor, cursor}
 	}
-	// f/F: inclusive (includes the target char).
-	// t/T: exclusive (lands before/after, doesn't include target).
-	inclusive := !till
+	// Forward searches (f, t) are inclusive. Backward searches (F, T) are exclusive.
+	inclusive := dir > 0
 	return rangeFromCursor(text, cursor, dest, inclusive)
 }
 

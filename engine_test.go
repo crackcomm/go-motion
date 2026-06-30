@@ -1,6 +1,9 @@
 package motion
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 // ---------------------------------------------------------------------------
 // Buffer motions
@@ -583,8 +586,8 @@ func TestEngineCharSearchTill(t *testing.T) {
 	if r.Kind != ResultExecute {
 		t.Fatalf("dtl: got Kind=%d, want Execute", r.Kind)
 	}
-	if r.Range != (Range{0, 1}) {
-		t.Errorf("dtl: got Range=[%d,%d), want [0,1)", r.Range.Start, r.Range.End)
+	if r.Range != (Range{0, 2}) {
+		t.Errorf("dtl: got Range=[%d,%d), want [0,2)", r.Range.Start, r.Range.End)
 	}
 }
 
@@ -955,5 +958,381 @@ func TestEngineDJ(t *testing.T) {
 	// Hmm, actually in vim, dj deletes the current line and the line below.
 	if result.Range.End < result.Range.Start {
 		t.Errorf("dj: invalid range [%d,%d)", result.Range.Start, result.Range.End)
+	}
+}
+
+// ── ApplyOp regression tests (engine → ApplyOp end-to-end) ──────────────────
+
+func TestApplyOpRangeNotTruncatedByCursor(t *testing.T) {
+	text := []rune("hello world")
+	var e Engine
+	e.Process(text, 0, Key('d'))
+	r := e.Process(text, 0, Key('w'))
+	if r.Kind != ResultExecute {
+		t.Fatal("dw: expected ResultExecute")
+	}
+	ar := ApplyOp(OpDelete, text, 0, r.Range)
+	if got, want := string(ar.Text), "world"; got != want {
+		t.Errorf("dw from 0: got %q, want %q", got, want)
+	}
+	if ar.Cursor != 0 {
+		t.Errorf("dw from 0: cursor=%d, want 0", ar.Cursor)
+	}
+}
+
+func TestApplyOpRangeAbsoluteFromMiddle(t *testing.T) {
+	text := []rune("test message")
+	var e Engine
+	e.Process(text, 5, Key('d'))
+	r := e.Process(text, 5, Key('w'))
+	if r.Kind != ResultExecute {
+		t.Fatal("dw from 5: expected ResultExecute")
+	}
+	ar := ApplyOp(OpDelete, text, 5, r.Range)
+	if got, want := string(ar.Text), "test "; got != want {
+		t.Errorf("dw from 5: got %q, want %q", got, want)
+	}
+}
+
+func TestApplyOpD2WExhaustsWords(t *testing.T) {
+	text := []rune("test message")
+	var e Engine
+	e.Process(text, 0, Key('d'))
+	e.Process(text, 0, Key('2'))
+	r := e.Process(text, 0, Key('w'))
+	if r.Kind != ResultExecute {
+		t.Fatal("d2w: expected ResultExecute")
+	}
+	ar := ApplyOp(OpDelete, text, 0, r.Range)
+	if got, want := string(ar.Text), ""; got != want {
+		t.Errorf("d2w: got %q, want empty", got)
+	}
+}
+
+func TestApplyOpD3WClampsToEOF(t *testing.T) {
+	text := []rune("test message")
+	var e Engine
+	e.Process(text, 0, Key('d'))
+	e.Process(text, 0, Key('3'))
+	r := e.Process(text, 0, Key('w'))
+	if r.Kind != ResultExecute {
+		t.Fatal("d3w: expected ResultExecute")
+	}
+	ar := ApplyOp(OpDelete, text, 0, r.Range)
+	if got, want := string(ar.Text), ""; got != want {
+		t.Errorf("d3w: got %q, want empty", got)
+	}
+}
+
+func TestApplyOpDWOnSingleWord(t *testing.T) {
+	text := []rune("hello")
+	var e Engine
+	e.Process(text, 0, Key('d'))
+	r := e.Process(text, 0, Key('w'))
+	if r.Kind != ResultExecute {
+		t.Fatal("dw single word: expected ResultExecute")
+	}
+	ar := ApplyOp(OpDelete, text, 0, r.Range)
+	if got, want := string(ar.Text), ""; got != want {
+		t.Errorf("dw single word: got %q, want empty", got)
+	}
+	if ar.Cursor != 0 {
+		t.Errorf("dw single word: cursor=%d, want 0", ar.Cursor)
+	}
+}
+
+func TestApplyOpDEFromMiddle(t *testing.T) {
+	text := []rune("hello world")
+	var e Engine
+	e.Process(text, 6, Key('d'))
+	r := e.Process(text, 6, Key('e'))
+	if r.Kind != ResultExecute {
+		t.Fatal("de from 6: expected ResultExecute")
+	}
+	ar := ApplyOp(OpDelete, text, 6, r.Range)
+	if got, want := string(ar.Text), "hello "; got != want {
+		t.Errorf("de from 6: got %q, want %q", got, want)
+	}
+}
+
+func TestApplyOpChangeEntersInsertMode(t *testing.T) {
+	text := []rune("hello world")
+	var e Engine
+	e.Process(text, 0, Key('c'))
+	r := e.Process(text, 0, Key('w'))
+	if r.Kind != ResultExecute {
+		t.Fatal("cw: expected ResultExecute")
+	}
+	if r.Op != OpChange {
+		t.Errorf("cw: op=%d, want OpChange", r.Op)
+	}
+	ar := ApplyOp(OpChange, text, 0, r.Range)
+	if got, want := string(ar.Text), "world"; got != want {
+		t.Errorf("cw: got %q, want %q", got, want)
+	}
+	if !ar.Insert {
+		t.Error("cw: Insert=false, want true")
+	}
+}
+
+func TestApplyOpBoundaries(t *testing.T) {
+	text := []rune("abc")
+	cases := []struct {
+		name string
+		op   Op
+		r    Range
+		want string
+		cur  int
+	}{
+		{"empty range delete", OpDelete, Range{0, 0}, "abc", 0},
+		{"full buffer delete", OpDelete, Range{0, 3}, "", 0},
+		{"last char delete", OpDelete, Range{2, 3}, "ab", 2},
+		{"yank", OpYank, Range{0, 3}, "abc", 0},
+		{"yank empty", OpYank, Range{1, 1}, "abc", 0},
+		{"change", OpChange, Range{0, 3}, "", 0},
+		{"range beyond buffer", OpDelete, Range{0, 10}, "", 0},
+		{"range reversed", OpDelete, Range{3, 1}, "a", 1},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			ar := ApplyOp(c.op, text, 0, c.r)
+			if got := string(ar.Text); got != c.want {
+				t.Errorf("text: got %q, want %q", got, c.want)
+			}
+			if ar.Cursor != c.cur {
+				t.Errorf("cursor: got %d, want %d", ar.Cursor, c.cur)
+			}
+		})
+	}
+}
+
+func TestOperatorDWAcrossPositions(t *testing.T) {
+	cases := []struct {
+		text string
+		pos  int
+		want string
+	}{
+		{"hello", 0, ""},
+		{"hello ", 0, ""},
+		{"a b c", 0, "b c"},
+		{"a b c", 2, "a c"},
+		{"a b c", 4, "a b "},
+		{"test message", 0, "message"},
+		{"test message", 5, "test "},
+		{"test  message", 5, "test message"},
+	}
+	for _, c := range cases {
+		text := []rune(c.text)
+		var e Engine
+		e.Process(text, c.pos, Key('d'))
+		r := e.Process(text, c.pos, Key('w'))
+		if r.Kind != ResultExecute {
+			t.Fatalf("dw on %q from %d: expected Execute", c.text, c.pos)
+		}
+		ar := ApplyOp(OpDelete, text, c.pos, r.Range)
+		if got := string(ar.Text); got != c.want {
+			t.Errorf("dw on %q from %d: got %q, want %q", c.text, c.pos, got, c.want)
+		}
+	}
+}
+
+func TestOperatorDCountWAcrossPositions(t *testing.T) {
+	cases := []struct {
+		text string
+		pos  int
+		cnt  int
+		want string
+	}{
+		{"a b c", 0, 2, "c"},
+		{"a b c", 0, 3, ""},
+		{"a b c", 0, 5, ""},
+		{"one two three four", 0, 2, "three four"},
+		{"test message", 0, 2, ""},
+	}
+	for _, c := range cases {
+		t.Run(fmt.Sprintf("pos%d_d%dw", c.pos, c.cnt), func(t *testing.T) {
+			text := []rune(c.text)
+			var e Engine
+			e.Process(text, c.pos, Key('d'))
+			for _, d := range fmt.Sprintf("%d", c.cnt) {
+				e.Process(text, c.pos, Key(rune(d)))
+			}
+			r := e.Process(text, c.pos, Key('w'))
+			if r.Kind != ResultExecute {
+				t.Fatalf("d%sw: expected Execute", fmt.Sprintf("%d", c.cnt))
+			}
+			ar := ApplyOp(OpDelete, text, c.pos, r.Range)
+			if got := string(ar.Text); got != c.want {
+				t.Errorf("d%dw: got %q, want %q", c.cnt, got, c.want)
+			}
+		})
+	}
+}
+
+func TestOperatorYank(t *testing.T) {
+	cases := []struct {
+		name string
+		text string
+		pos  int
+		keys []rune
+		want string
+	}{
+		{"yw hello", "hello world", 0, []rune{'y', 'w'}, "hello "},
+		{"yw world", "hello world", 6, []rune{'y', 'w'}, "world"},
+		{"ye hello", "hello world", 0, []rune{'y', 'e'}, "hello"},
+		{"ye world", "hello world", 6, []rune{'y', 'e'}, "world"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			text := []rune(c.text)
+			var e Engine
+			for i, k := range c.keys {
+				r := e.Process(text, c.pos, Key(k))
+				if i == len(c.keys)-1 {
+					if r.Kind != ResultExecute {
+						t.Fatalf("%s: expected Execute, got %d", c.name, r.Kind)
+					}
+					ar := ApplyOp(OpYank, text, c.pos, r.Range)
+					if got := string(ar.Text); got != c.text {
+						t.Errorf("%s: text changed: got %q", c.name, got)
+					}
+					if ar.Yanked != c.want {
+						t.Errorf("%s: yanked=%q, want %q", c.name, ar.Yanked, c.want)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestOperatorCharSearch(t *testing.T) {
+	cases := []struct {
+		name string
+		text string
+		pos  int
+		seq  string
+		want string
+	}{
+		{"dfl hello", "hello world", 0, "fl", "lo world"},
+		{"dfl l2", "hello world", 3, "fl", "held"},
+		{"dfl x", "hello world", 0, "fx", "hello world"},
+		{"dtl hello", "hello world", 0, "tl", "llo world"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			text := []rune(c.text)
+			var e Engine
+			var r Result
+			e.Process(text, c.pos, Key('d'))
+			e.Process(text, c.pos, Key(rune(c.seq[0])))
+			r = e.Process(text, c.pos, Key(rune(c.seq[1])))
+			ar := ApplyOp(OpDelete, text, c.pos, r.Range)
+			if got := string(ar.Text); got != c.want {
+				t.Errorf("%s: got %q, want %q", c.name, got, c.want)
+			}
+		})
+	}
+}
+
+func TestTextObjectOperators(t *testing.T) {
+	cases := []struct {
+		name string
+		text string
+		pos  int
+		seq  []rune
+		want string
+	}{
+		{"diw single word", "hello", 0, []rune{'d', 'i', 'w'}, ""},
+		{"daw single word", "hello", 0, []rune{'d', 'a', 'w'}, ""},
+		{"di( paren", "a(b)c", 1, []rune{'d', 'i', '('}, "a()c"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			text := []rune(c.text)
+			var e Engine
+			var r Result
+			for _, k := range c.seq {
+				r = e.Process(text, c.pos, Key(k))
+			}
+			if r.Kind != ResultExecute {
+				t.Fatalf("%s: expected Execute got %d", c.name, r.Kind)
+			}
+			ar := ApplyOp(OpDelete, text, c.pos, r.Range)
+			if got := string(ar.Text); got != c.want {
+				t.Errorf("%s: got %q, want %q", c.name, got, c.want)
+			}
+		})
+	}
+}
+
+func TestGPrefixOperators(t *testing.T) {
+	cases := []struct {
+		name string
+		text string
+		pos  int
+		keys []rune
+		want string
+	}{
+		{"dgg line1", "a\nb\nc", 4, []rune{'d', 'g', 'g'}, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			text := []rune(c.text)
+			var e Engine
+			var r Result
+			for _, k := range c.keys {
+				r = e.Process(text, c.pos, Key(k))
+			}
+			if r.Kind != ResultExecute {
+				t.Fatalf("%s: expected Execute got %d", c.name, r.Kind)
+			}
+			ar := ApplyOp(OpDelete, text, c.pos, r.Range)
+			if got := string(ar.Text); got != c.want {
+				t.Errorf("%s: got %q, want %q", c.name, got, c.want)
+			}
+		})
+	}
+}
+
+func TestOperatorEscapeCancels(t *testing.T) {
+	text := []rune("hello world")
+	var e Engine
+	e.Process(text, 0, Key('d'))
+	if !e.Pending() {
+		t.Error("d: expected pending state")
+	}
+	r := e.Process(text, 0, Key(27))
+	if r.Kind != ResultCancel {
+		t.Errorf("esc after d: got Kind=%d, want Cancel", r.Kind)
+	}
+	if e.Pending() {
+		t.Error("engine should be idle after esc")
+	}
+}
+
+func TestNextWordStartExhaustive(t *testing.T) {
+	cases := []struct {
+		text  string
+		pos   int
+		count int
+		want  int
+	}{
+		{"ab cd ef", 0, 1, 3},
+		{"ab cd ef", 3, 1, 6},
+		{"ab cd ef", 5, 1, 6},
+		{"ab cd ef", 7, 1, 7},
+		{"ab cd ef", 0, 2, 6},
+		{"ab cd ef", 0, 3, 7},
+		{"ab cd ef", 0, 5, 7},
+		{"word", 0, 1, 3},
+		{"", 0, 1, 0},
+		{"a b c", 2, 1, 4},
+		{"a b c", 4, 1, 4},
+	}
+	for _, c := range cases {
+		got := NextWordStart([]rune(c.text), c.pos, c.count)
+		if got != c.want {
+			t.Errorf("NextWordStart(%q,%d,%d) = %d, want %d", c.text, c.pos, c.count, got, c.want)
+		}
 	}
 }
