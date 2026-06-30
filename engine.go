@@ -280,16 +280,27 @@ func (e *Engine) handleIdle(text []rune, cursor int, r rune, cnt int) Result {
 		e.state = stOp
 		e.op = OpDelete
 		return Result{Kind: ResultNone}
+	case 'D':
+		e.record('D')
+		e.op = OpDelete
+		return e.execute(text, cursor, motionDollar, cnt)
 	case 'c':
 		e.record('c')
 		e.state = stOp
 		e.op = OpChange
 		return Result{Kind: ResultNone}
+	case 'C':
+		e.record('C')
+		e.op = OpChange
+		return e.execute(text, cursor, motionDollar, cnt)
 	case 'y':
 		e.record('y')
 		e.state = stOp
 		e.op = OpYank
 		return Result{Kind: ResultNone}
+	case 'Y':
+		e.record('Y')
+		return e.lineOp(text, cursor, OpYank)
 
 	case 'G':
 		// G without count: go to end of buffer.

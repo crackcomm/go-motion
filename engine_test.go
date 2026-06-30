@@ -1569,3 +1569,78 @@ func TestDDEmptyLine(t *testing.T) {
 		})
 	}
 }
+func TestEngineC(t *testing.T) {
+	cases := []struct {
+		desc   string
+		text   []rune
+		pos    int
+		count  int
+		want   Result
+	}{
+		{
+			desc:  "C from middle of line",
+			text:  []rune("hello world"),
+			pos:   2,
+			count: 1,
+			want:  Result{Kind: ResultExecute, Op: OpChange, Range: Range{2, 11}, Insert: true},
+		},
+		{
+			desc:  "C from start of line",
+			text:  []rune("hello\nworld"),
+			pos:   6,
+			count: 1,
+			want:  Result{Kind: ResultExecute, Op: OpChange, Range: Range{6, 11}, Insert: true},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.desc, func(t *testing.T) {
+			var e Engine
+			for i := 0; i < c.count-1; i++ {
+				e.Process(c.text, c.pos, '2')
+			}
+			got := e.Process(c.text, c.pos, 'C')
+			if got != c.want {
+				t.Errorf("got %+v, want %+v", got, c.want)
+			}
+		})
+	}
+}
+
+func TestEngineY(t *testing.T) {
+	cases := []struct {
+		desc   string
+		text   []rune
+		pos    int
+		count  int
+		want   Result
+	}{
+		{
+			desc:  "Y from middle of line",
+			text:  []rune("hello world"),
+			pos:   2,
+			count: 1,
+			want:  Result{Kind: ResultExecute, Op: OpYank, Range: Range{0, 11}, Insert: false},
+		},
+		{
+			desc:  "Y from start of line",
+			text:  []rune("hello\nworld"),
+			pos:   6,
+			count: 1,
+			want:  Result{Kind: ResultExecute, Op: OpYank, Range: Range{6, 11}, Insert: false},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.desc, func(t *testing.T) {
+			var e Engine
+			for i := 0; i < c.count-1; i++ {
+				e.Process(c.text, c.pos, '2')
+			}
+			got := e.Process(c.text, c.pos, 'Y')
+			if got != c.want {
+				t.Errorf("got %+v, want %+v", got, c.want)
+			}
+		})
+	}
+}
