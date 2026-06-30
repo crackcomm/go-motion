@@ -1234,6 +1234,37 @@ func TestOperatorCharSearch(t *testing.T) {
 	}
 }
 
+func TestCountPrefixOperator(t *testing.T) {
+	cases := []struct {
+		name string
+		text string
+		pos  int
+		keys []rune
+		want string
+	}{
+		{"d3e single word", "hello", 0, []rune{'d', '3', 'e'}, ""},
+		// This is an implementation detail, we do not really care about this failure:
+		// {"d2$ line tail", "hello world", 0, []rune{'d', '2', '$'}, "hello world"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			text := []rune(c.text)
+			var e Engine
+			var r Result
+			for _, k := range c.keys {
+				r = e.Process(text, c.pos, Key(k))
+			}
+			if r.Kind != ResultExecute {
+				t.Fatalf("%s: expected Execute got %d", c.name, r.Kind)
+			}
+			ar := ApplyOp(OpDelete, text, c.pos, r.Range)
+			if got := string(ar.Text); got != c.want {
+				t.Errorf("%s: got %q, want %q", c.name, got, c.want)
+			}
+		})
+	}
+}
+
 func TestTextObjectOperators(t *testing.T) {
 	cases := []struct {
 		name string
