@@ -850,6 +850,95 @@ func TestEngineEmptyBuffer(t *testing.T) {
 	}
 }
 
+func TestEngineX(t *testing.T) {
+	var e Engine
+
+	r := e.Process([]rune("hello"), 0, Key('x'))
+	if r.Kind != ResultExecute || r.Op != OpDelete || r.Range != (Range{0, 1}) {
+		t.Fatalf("x at 0: got Kind=%d Op=%d Range=%v", r.Kind, r.Op, r.Range)
+	}
+
+	r = e.Process([]rune("hello"), 4, Key('x'))
+	if r.Kind != ResultExecute {
+		t.Fatalf("x at eof: got Kind=%d", r.Kind)
+	}
+
+	r = e.Process([]rune("hello"), 2, Key('2'))
+	if r.Kind != ResultNone {
+		t.Fatalf("2x: count pre-handling returned %d", r.Kind)
+	}
+	r = e.Process([]rune("hello"), 2, Key('x'))
+	if r.Kind != ResultExecute || r.Range != (Range{2, 4}) {
+		t.Errorf("2x: got Range=%v, want [2,4)", r.Range)
+	}
+
+	r = e.Process([]rune(""), 0, Key('x'))
+	if r.Kind != ResultNone {
+		t.Errorf("x on empty: got %d, want None", r.Kind)
+	}
+
+	text := []rune("abc")
+	r = e.Process(text, 1, Key('x'))
+	if e.state != stIdle {
+		t.Errorf("engine not reset after x, state=%d", e.state)
+	}
+	ar := ApplyOp(OpDelete, text, 1, r.Range)
+	if string(ar.Text) != "ac" || ar.Cursor != 1 {
+		t.Errorf("apply x: got %q at %d", string(ar.Text), ar.Cursor)
+	}
+}
+
+func TestEngineXBack(t *testing.T) {
+	var e Engine
+
+	r := e.Process([]rune("hello"), 1, Key('X'))
+	if r.Kind != ResultExecute || r.Op != OpDelete || r.Range != (Range{0, 1}) {
+		t.Fatalf("X at 1: got %v", r.Range)
+	}
+
+	r = e.Process([]rune("hello"), 0, Key('X'))
+	if r.Kind != ResultNone {
+		t.Errorf("X at 0: got %d, want None", r.Kind)
+	}
+
+	r = e.Process([]rune("hello"), 3, Key('2'))
+	if r.Kind != ResultNone {
+		t.Fatalf("2X: count pre-handling returned %d", r.Kind)
+	}
+	r = e.Process([]rune("hello"), 3, Key('X'))
+	if r.Kind != ResultExecute || r.Range != (Range{1, 3}) {
+		t.Errorf("2X: got Range=%v, want [1,3)", r.Range)
+	}
+
+	text := []rune("hello")
+	r = e.Process(text, 3, Key('3'))
+	if r.Kind != ResultNone {
+		t.Fatalf("3X pre-count: got %d", r.Kind)
+	}
+	r = e.Process(text, 3, Key('X'))
+	if r.Kind != ResultExecute {
+		// clamp: 3-3 = 0 -> Range{0,3}
+		ar := ApplyOp(OpDelete, text, 3, r.Range)
+		if string(ar.Text) != "lo" || ar.Cursor != 0 {
+			t.Errorf("3X clamped: got %q at %d", string(ar.Text), ar.Cursor)
+		}
+	}
+
+	r = e.Process([]rune(""), 0, Key('X'))
+	if r.Kind != ResultNone {
+		t.Errorf("X on empty: got %d, want None", r.Kind)
+	}
+
+	r = e.Process([]rune("ab"), 1, Key('5'))
+	if r.Kind != ResultNone {
+		t.Fatalf("5X: count pre-handling returned %d", r.Kind)
+	}
+	r = e.Process([]rune("ab"), 1, Key('X'))
+	if r.Kind != ResultExecute || r.Range != (Range{0, 1}) {
+		t.Errorf("5X past start: got Range=%v, want [0,1)", r.Range)
+	}
+}
+
 func TestEngineDJ(t *testing.T) {
 	var e Engine
 	text := []rune("hello\nworld")

@@ -71,6 +71,8 @@ const (
 	motionT                         // t — till char forward
 	motionBwdF                      // F — find char backward
 	motionBwdT                      // T — till char backward
+	motionX                         // x — delete char at cursor
+	motionXBack                     // X — delete char before cursor
 )
 
 // engineState tracks the current position in a key sequence.
@@ -302,8 +304,19 @@ func (e *Engine) handleIdle(text []rune, cursor int, r rune, cnt int) Result {
 		e.record('g')
 		e.state = stG
 		return Result{Kind: ResultNone}
-	}
 
+	case 'x':
+		e.Reset()
+		if cursor < len(text) {
+			return Result{Kind: ResultExecute, Op: OpDelete, Range: Range{cursor, min(cursor+cnt, len(text))}}
+		}
+
+	case 'X':
+		e.Reset()
+		if cursor > 0 && len(text) > 0 {
+			return Result{Kind: ResultExecute, Op: OpDelete, Range: Range{max(cursor-cnt, 0), cursor}}
+		}
+	}
 	return Result{Kind: ResultNone}
 }
 
@@ -945,6 +958,14 @@ func resolveMotionRange(text []rune, cursor int, mt motionType, count int) Range
 	case motionT, motionBwdT:
 		// t/T: exclusive of the found char (land before it).
 		return rangeFromCursor(text, cursor, dest, false)
+
+	case motionX:
+		e := max(cursor, min(cursor+count, len(text)))
+		return Range{cursor, e}
+
+	case motionXBack:
+		s := min(cursor, max(cursor-count, 0))
+		return Range{s, cursor}
 	}
 
 	return rangeFromCursor(text, cursor, dest, false)
