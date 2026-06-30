@@ -57,12 +57,12 @@ func TestMoveParagraphForward(t *testing.T) {
 		count int
 		want  int
 	}{
-		{0, 1, 5},   // } from "a": para 2 start ('1')
-		{2, 1, 5},   // } from "c": para 2 start ('1')
-		{5, 1, 18},  // } from "1": para 3 start ('d')
+		{0, 1, 4},   // } from "a": empty line before '1'
+		{2, 1, 4},   // } from "c": empty line before '1'
+		{5, 1, 17},  // } from "1": empty line before 'd'
 		{18, 1, 21}, // } from "d": past end of text
-		{0, 2, 18},  // }} from "a": para 3 start ('d')
-		{3, 1, 5},   // } from first \n of blank line: skip to para 2 ('1')
+		{0, 2, 17},  // }} from "a": empty line before 'd'
+		{3, 1, 4},   // } from first \n of blank line: stops at empty line
 	}
 	for _, c := range cases {
 		got := MoveParagraphForward(text, c.pos, c.count)
@@ -79,9 +79,9 @@ func TestMoveParagraphBackward(t *testing.T) {
 		count int
 		want  int
 	}{
-		{5, 1, 0},  // { from "1": para 1 start
-		{17, 1, 5}, // { from "d": para 2 start
-		{8, 1, 5},  // { from "5": para 2 start (current paragraph)
+		{5, 1, 4},  // { from "1": empty line before '1'
+		{17, 1, 4}, // { from "d": empty line before '1'
+		{8, 1, 4},  // { from "5": empty line before '1'
 		{10, 2, 0}, // {{ from "7": para 1 start
 		{0, 1, 0},  // { from start: no-op
 	}
@@ -723,8 +723,8 @@ func TestEngineParagraphOperator(t *testing.T) {
 	if r.Kind != ResultExecute {
 		t.Fatalf("d{: got Kind=%d, want Execute", r.Kind)
 	}
-	if r.Range.Start != 5 || r.Range.End != 10 {
-		t.Errorf("d{: got Range=[%d,%d), want [5,10)", r.Range.Start, r.Range.End)
+	if r.Range.Start != 4 || r.Range.End != 10 {
+		t.Errorf("d{: got Range=[%d,%d), want [4,10)", r.Range.Start, r.Range.End)
 	}
 }
 
@@ -1305,6 +1305,36 @@ func TestGPrefixOperators(t *testing.T) {
 		want string
 	}{
 		{"dgg line1", "a\nb\nc", 4, []rune{'d', 'g', 'g'}, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			text := []rune(c.text)
+			var e Engine
+			var r Result
+			for _, k := range c.keys {
+				r = e.Process(text, c.pos, Key(k))
+			}
+			if r.Kind != ResultExecute {
+				t.Fatalf("%s: expected Execute got %d", c.name, r.Kind)
+			}
+			ar := ApplyOp(OpDelete, text, c.pos, r.Range)
+			if got := string(ar.Text); got != c.want {
+				t.Errorf("%s: got %q, want %q", c.name, got, c.want)
+			}
+		})
+	}
+}
+
+func TestParagraphOperators(t *testing.T) {
+	cases := []struct {
+		name string
+		text string
+		pos  int
+		keys []rune
+		want string
+	}{
+		{"d} first para", "abc\n\n123\n456\n\ndef", 0, []rune{'d', '}'}, "\n123\n456\n\ndef"},
+		{"d{ mid para", "abc\n\n123\n456\n\ndef", 9, []rune{'d', '{'}, "abc\n456\n\ndef"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

@@ -44,19 +44,18 @@ func isParagraphStart(text []rune, i int) bool {
 }
 
 // MoveParagraphForward implements } — move forward to the start of the
-// next paragraph.
+// next paragraph (the next empty line).
 //
 // Algorithm (adapted from findpar with dir=FORWARD, what=NUL):
 //  1. For each count:
-//     a. If on an empty line, skip forward past it.
+//     a. If on an empty line, skip forward past consecutive empty lines.
 //     b. Walk forward through non-empty lines (the current paragraph).
 //     c. Stop at the next empty line (paragraph boundary).
-//     d. Skip past the empty lines to the start of the next paragraph.
-//  2. If no next paragraph exists, stay at the current position.
+//  2. If no next empty line exists, go to the end of the text.
 //
 // Edge cases:
-//   - Already at the last paragraph: no-op
-//   - Inside blank lines: skip forward to the next paragraph
+//   - Already at the end of the text: no-op
+//   - Inside blank lines: skip forward to the next paragraph's ending empty line
 func MoveParagraphForward(text []rune, pos, count int) int {
 	n := len(text)
 	if n == 0 {
@@ -64,29 +63,22 @@ func MoveParagraphForward(text []rune, pos, count int) int {
 	}
 
 	for count > 0 {
-		// Step 1: skip blank lines at the current position.
-		wasBlank := false
-		for pos < n && text[pos] == '\n' {
+		// Skip empty lines at the current position.
+		for pos < n && text[pos] == '\n' && (pos == 0 || text[pos-1] == '\n') {
 			pos++
-			wasBlank = true
 		}
 
-		if !wasBlank {
-			// We started in content. Walk forward through the paragraph
-			// to find the blank-line boundary that ends it.
-			for pos < n {
-				if text[pos] == '\n' && (pos+1 >= n || text[pos+1] == '\n') {
-					break
+		// Walk forward through the paragraph to find the next empty line.
+		for pos < n {
+			if text[pos] == '\n' && (pos+1 >= n || text[pos+1] == '\n') {
+				// Land on the empty line (after the newline of the content line)
+				if pos+1 < n {
+					pos++
 				}
-				pos++
+				break
 			}
-			// Step 2: skip past the blank line to the next paragraph start.
-			for pos < n && text[pos] == '\n' {
-				pos++
-			}
+			pos++
 		}
-		// If we were on a blank line, we already skipped to the start of
-		// the next paragraph — that's the destination.
 
 		count--
 	}
@@ -99,18 +91,15 @@ func MoveParagraphForward(text []rune, pos, count int) int {
 }
 
 // MoveParagraphBackward implements { — move backward to the start of the
-// current or previous paragraph.
+// current or previous paragraph (the previous empty line).
 //
 // Algorithm (adapted from findpar with dir=BACKWARD, what=NUL):
 //  1. For each count:
-//     a. If on an empty line, skip backward past it.
+//     a. If on an empty line, skip backward past consecutive empty lines.
 //     b. Walk backward through non-empty lines to find the paragraph
 //     boundary before this paragraph.
-//     c. Skip forward past the boundary to the paragraph start.
-//  2. If no previous paragraph exists, go to position 0.
-//
-// If already at a paragraph start, moves to the start of the previous
-// paragraph (if any).
+//     c. Stop at the previous empty line.
+//  2. If no previous empty line exists, go to position 0.
 func MoveParagraphBackward(text []rune, pos, count int) int {
 	n := len(text)
 	if n == 0 {
@@ -121,57 +110,23 @@ func MoveParagraphBackward(text []rune, pos, count int) int {
 	}
 
 	for count > 0 {
-		// Step 1a: skip empty lines backward.
-		for pos > 0 && text[pos-1] == '\n' {
+		// Skip empty lines backward.
+		for pos > 0 && text[pos] == '\n' && text[pos-1] == '\n' {
 			pos--
 		}
 
-		// If already at position 0, nowhere to go.
-		if pos == 0 {
-			break
-		}
-
-		// Check if we're at a paragraph start (first char after blank line).
-		if isParagraphStart(text, pos) {
-			// Already at a paragraph start. Move backward past the
-			// blank line before it to find the previous paragraph.
-			// Enter the blank line that precedes this paragraph.
-			pos--
-			for pos > 0 && text[pos] == '\n' {
-				pos--
-			}
-		}
-
-		// Step 1b: walk backward through this paragraph's content
-		// to find the blank line boundary before it.
+		// Walk backward through the paragraph to find the previous empty line.
 		for pos > 0 {
-			if text[pos-1] == '\n' && pos > 1 && text[pos-2] == '\n' {
-				// Found blank line at (pos-2, pos-1).
-				// Step 1c: advance past it to paragraph start.
-				break
-			}
-			if pos == 1 && text[0] == '\n' {
-				// Position 1 is \n and position 0 is something
-				// (or \n). This is a boundary at the very start.
-				break
-			}
 			pos--
-		}
-
-		// Step 1c: advance past blank lines to paragraph start.
-		for pos < n && text[pos] == '\n' {
-			pos++
+			if text[pos] == '\n' && (pos == 0 || text[pos-1] == '\n') {
+				break
+			}
 		}
 
 		count--
 	}
 
 	if pos < 0 {
-		pos = 0
-	}
-
-	// If already at the first paragraph, stay at start of text.
-	if pos == n {
 		pos = 0
 	}
 
