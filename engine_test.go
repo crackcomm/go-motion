@@ -1485,3 +1485,87 @@ func TestKMotionWithCount(t *testing.T) {
 		})
 	}
 }
+
+func TestDDEmptyLine(t *testing.T) {
+	var e Engine
+
+	cases := []struct {
+		name     string
+		text     []rune
+		cursor   int
+		wantText string
+	}{
+		{
+			"dd_empty_middle_line",
+			[]rune("line1\n\nline3"),
+			6, // cursor on the \n of the empty line (second \n)
+			"line1\nline3",
+		},
+		{
+			"dd_first_line_newline",
+			[]rune("line1\n\nline3"),
+			5, // cursor on the first \n (end of line1)
+			"\nline3",
+		},
+		{
+			"dd_last_line",
+			[]rune("line1\n\nline3"),
+			7, // cursor on 'l' of line3
+			"line1\n\n",
+		},
+		{
+			"dd_from_non_empty_line",
+			[]rune("hello\nworld\nfoo"),
+			1, // cursor on 'e'
+			"world\nfoo",
+		},
+		{
+			"dd_only_empty_line",
+			[]rune("\n"),
+			0, // cursor on \n
+			"",
+		},
+		{
+			"dd_trailing_empty_line",
+			[]rune("hello\n\n"),
+			6, // cursor on the last \n
+			"hello\n",
+		},
+		{
+			"dd_leading_empty_line",
+			[]rune("\nhello"),
+			0, // cursor on the first \n
+			"hello",
+		},
+		{
+			"dd_multiple_empty_lines",
+			[]rune("\n\n\n"),
+			1, // cursor on the middle \n
+			"\n\n",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			text := make([]rune, len(tc.text))
+			copy(text, tc.text)
+
+			r1 := e.Process(text, tc.cursor, Key('d'))
+			if r1.Kind != ResultNone {
+				t.Fatalf("after first d: got %v, want idle", r1.Kind)
+			}
+			r2 := e.Process(text, tc.cursor, Key('d'))
+			if r2.Kind != ResultExecute {
+				t.Fatalf("dd: got Kind=%v, want ResultExecute", r2.Kind)
+			}
+			if r2.Op != OpDelete {
+				t.Errorf("dd: got Op=%v, want OpDelete", r2.Op)
+			}
+
+			got := string(ApplyOp(r2.Op, text, tc.cursor, r2.Range).Text)
+			if got != tc.wantText {
+				t.Errorf("dd: got %q, want %q", got, tc.wantText)
+			}
+		})
+	}
+}

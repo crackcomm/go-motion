@@ -438,14 +438,26 @@ func (e *Engine) handleOp(text []rune, cursor int, r rune, cnt int) Result {
 
 // lineOp executes a linewise operator (dd, cc, yy).
 func (e *Engine) lineOp(text []rune, cursor int, op Op) Result {
-	start := LineStart(text, cursor)
-	end := LineEnd(text, cursor)
-	if end < npos(text)-1 {
+	if cursor >= len(text) {
+		cursor = len(text) - 1
+	}
+	if cursor < 0 {
+		cursor = 0
+	}
+
+	start := cursor
+	for start > 0 && text[start-1] != '\n' {
+		start--
+	}
+
+	end := cursor
+	for end < len(text) && text[end] != '\n' {
+		end++
+	}
+	if end < len(text) {
 		end++ // include the \n
 	}
-	if end < npos(text) {
-		end++ // include the \n terminator
-	}
+
 	e.Reset()
 	return Result{
 		Kind:   ResultExecute,
