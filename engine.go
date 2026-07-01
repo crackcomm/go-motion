@@ -300,7 +300,7 @@ func (e *Engine) handleIdle(text []rune, cursor int, r rune, cnt int) Result {
 		return Result{Kind: ResultNone}
 	case 'Y':
 		e.record('Y')
-		return e.lineOp(text, cursor, OpYank)
+		return e.lineOp(text, cursor, OpYank, cnt)
 
 	case 'G':
 		// G without count: go to end of buffer.
@@ -339,13 +339,13 @@ func (e *Engine) handleOp(text []rune, cursor int, r rune, cnt int) Result {
 	switch {
 	// Double-key: dd, cc, yy — linewise operation.
 	case r == 'd' && e.op == OpDelete:
-		return e.lineOp(text, cursor, OpDelete)
+		return e.lineOp(text, cursor, OpDelete, cnt)
 
 	case r == 'c' && e.op == OpChange:
-		return e.lineOp(text, cursor, OpChange)
+		return e.lineOp(text, cursor, OpChange, cnt)
 
 	case r == 'y' && e.op == OpYank:
-		return e.lineOp(text, cursor, OpYank)
+		return e.lineOp(text, cursor, OpYank, cnt)
 
 		// Text objects: i/a after operator.
 	case r == 'i':
@@ -448,12 +448,27 @@ func (e *Engine) handleOp(text []rune, cursor int, r rune, cnt int) Result {
 }
 
 // lineOp executes a linewise operator (dd, cc, yy).
-func (e *Engine) lineOp(text []rune, cursor int, op Op) Result {
-	if cursor >= len(text) {
-		cursor = len(text) - 1
+func (e *Engine) lineOp(text []rune, cursor int, op Op, count int) Result {
+	n := len(text)
+	if n == 0 {
+		e.Reset()
+		return Result{Kind: ResultNone}
 	}
-	if cursor < 0 {
-		cursor = 0
+
+	cursor = min(max(cursor, 0), n)
+
+	// Cursor at n means the trailing empty line.
+	if cursor == n && n > 0 && text[n-1] == '\n' {
+		e.Reset()
+		if op != OpDelete {
+			return Result{Kind: ResultNone}
+		}
+		return Result{
+			Kind:   ResultExecute,
+			Op:     op,
+			Range:  Range{n - 1, n},
+			Insert: false,
+		}
 	}
 
 	start := cursor
@@ -462,11 +477,22 @@ func (e *Engine) lineOp(text []rune, cursor int, op Op) Result {
 	}
 
 	end := cursor
-	for end < len(text) && text[end] != '\n' {
-		end++
+	// Loop `count` times to support numbers like 3dd, 2yy
+	for range count {
+		for end < n && text[end] != '\n' {
+			end++
+		}
+		if end < n {
+			end++ // include the \n
+		} else {
+			break
+		}
 	}
-	if end < len(text) {
-		end++ // include the \n
+
+	// Last content line (no trailing \n): include the preceding \n
+	// so the line count decreases. cc and yy keep the preceding \n.
+	if end == n && (n == 0 || text[n-1] != '\n') && start > 0 && op == OpDelete {
+		start--
 	}
 
 	e.Reset()

@@ -1770,7 +1770,7 @@ func TestDDEmptyLine(t *testing.T) {
 			"dd_last_line",
 			[]rune("line1\n\nline3"),
 			7, // cursor on 'l' of line3
-			"line1\n\n",
+			"line1\n",
 		},
 		{
 			"dd_from_non_empty_line",
