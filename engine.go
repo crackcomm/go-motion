@@ -752,10 +752,7 @@ func resolveMotionPos(text []rune, cursor int, mt motionType, count int) int {
 	case motionH:
 		pos := cursor - count
 		start := LineStart(text, cursor)
-		if pos < start {
-			pos = start
-		}
-		return pos
+		return max(pos, start)
 	case motionL:
 		pos := cursor + count
 		end := LineEnd(text, cursor)
@@ -835,13 +832,10 @@ func moveVertical(text []rune, cursor int, count int) int {
 	}
 
 	lineStart := LineStart(text, cursor)
-	col := cursor - lineStart
-	if col < 0 {
-		col = 0
-	}
+	col := max(cursor-lineStart, 0)
 
 	if count > 0 {
-		for i := 0; i < count; i++ {
+		for range count {
 			// Find the terminator for the current line
 			term := lineStart
 			for term < n && text[term] != '\n' {
@@ -871,11 +865,7 @@ func moveVertical(text []rune, cursor int, count int) int {
 	// If the line is empty, lineEnd == lineStart, so maxCol = 0.
 	// If the line is non-empty, maxCol = lineEnd - lineStart.
 	maxCol := lineEnd - lineStart
-
-	targetCol := col
-	if targetCol > maxCol {
-		targetCol = maxCol
-	}
+	targetCol := min(col, maxCol)
 
 	pos := lineStart + targetCol
 	if pos >= n {
@@ -943,9 +933,10 @@ func resolveMotionRange(text []rune, cursor int, mt motionType, count int) Range
 		return rangeFromCursor(text, cursor, dest, false)
 
 	case motionW, motionB, motionBigW, motionBigB, motionGe, motionBigGe:
-		if mt == motionW {
+		switch mt {
+		case motionW:
 			dest = nextWordStartOp(text, cursor, count)
-		} else if mt == motionBigW {
+		case motionBigW:
 			dest = nextBigwordStartOp(text, cursor, count)
 		}
 		return rangeFromCursor(text, cursor, dest, false)
