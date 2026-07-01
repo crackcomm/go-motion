@@ -687,8 +687,9 @@ func (e *Engine) handleChar(text []rune, cursor int, r rune, cnt int) Result {
 
 func (e *Engine) navigateMotion(text []rune, cursor int, mt motionType, cnt int) Result {
 	pos := resolveMotionPos(text, cursor, mt, cnt)
-	if pos >= len(text) && len(text) > 0 {
-		pos = len(text) - 1
+	n := len(text)
+	if pos > n || (pos == n && n > 0 && text[n-1] != '\n') {
+		pos = n - 1
 	}
 	e.Reset()
 	return Result{
@@ -754,12 +755,13 @@ func resolveMotionPos(text []rune, cursor int, mt motionType, count int) int {
 		start := LineStart(text, cursor)
 		return max(pos, start)
 	case motionL:
-		pos := cursor + count
+		// If cursor is past the line end (e.g. on a trailing \n
+		// that terminates the previous content line), don't move.
 		end := LineEnd(text, cursor)
-		if pos > end {
-			pos = end
+		if cursor > end {
+			return cursor
 		}
-		return pos
+		return min(cursor+count, end)
 	case motionJ:
 		return moveVertical(text, cursor, count)
 	case motionK:
@@ -841,11 +843,13 @@ func moveVertical(text []rune, cursor int, count int) int {
 			for term < n && text[term] != '\n' {
 				term++
 			}
-			// If term >= n-1, there is no next line
-			if term >= n - 1 {
+			// If we're past the end of the buffer, no further lines.
+			if term >= n {
 				break
 			}
-			// Next line starts immediately after the terminator
+			// Next line starts immediately after the terminator.
+			// If the buffer ends with \n (term == n-1), this still
+			// advances to the trailing empty line.
 			lineStart = term + 1
 		}
 	} else {
@@ -857,6 +861,13 @@ func moveVertical(text []rune, cursor int, count int) int {
 			// The start of the previous line is LineStart of its terminator!
 			lineStart = LineStart(text, lineStart-1)
 		}
+	}
+
+	// If we advanced past the buffer end, we're on the trailing empty
+	// line. Return n to represent it; callers must handle n as valid
+	// when buffer[n-1] == '\n'.
+	if lineStart >= n {
+		return n
 	}
 
 	lineEnd := LineEnd(text, lineStart)

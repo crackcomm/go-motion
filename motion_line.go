@@ -30,11 +30,15 @@ package motion
 //   - Consecutive \n (empty line): the \n ADJACENT to the empty line
 //     is treated as its start; skip forward to the content after it.
 func LineStart(text []rune, pos int) int {
-	if len(text) == 0 {
+	n := len(text)
+	if n == 0 {
 		return 0
 	}
-	if pos >= len(text) {
-		pos = len(text) - 1
+	if pos >= n {
+		if pos == n && text[n-1] == '\n' {
+			return n
+		}
+		pos = n - 1
 	}
 	if pos < 0 {
 		pos = 0
@@ -74,6 +78,9 @@ func LineEnd(text []rune, pos int) int {
 	}
 
 	if pos >= n {
+		if pos == n && n > 0 && text[n-1] == '\n' {
+			return n
+		}
 		return n - 1 // last line, end of text
 	}
 
@@ -148,6 +155,11 @@ func FirstNonBlank(text []rune, pos int) int {
 //   - Line with trailing whitespace: returns last non-whitespace char
 func LastNonBlank(text []rune, pos int) int {
 	start := LineStart(text, pos)
+
+	// Trailing empty line: line is empty.
+	if start == len(text) {
+		return start
+	}
 
 	// Walk forward from start to find the end of the line (inclusive).
 	// We compute this independently of LineEnd because LineEnd and

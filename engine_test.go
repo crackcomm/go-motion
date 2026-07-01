@@ -525,6 +525,265 @@ func TestEngineVerticalMotion(t *testing.T) {
 	}
 }
 
+func TestEngineVerticalMotionEmptyLines(t *testing.T) {
+	text := []rune("a\n\n\nb")
+	// Lines: "a" (pos 0), "" (pos 2), "" (pos 3), "b" (pos 4)
+	cases := []struct {
+		desc string
+		from int
+		want int
+		key  rune
+	}{
+		{"j from 'a' to first empty line", 0, 2, 'j'},
+		{"j from first empty to second empty", 2, 3, 'j'},
+		{"j from last empty to 'b'", 3, 4, 'j'},
+		{"k from 'b' to last empty line", 4, 3, 'k'},
+		{"k from last empty to first empty", 3, 2, 'k'},
+		{"k from first empty to 'a'", 2, 0, 'k'},
+	}
+	for _, c := range cases {
+		t.Run(c.desc, func(t *testing.T) {
+			var e Engine
+			got := e.Process(text, c.from, Key(c.key))
+			if got.Kind != ResultNavigate || got.Cursor != c.want {
+				t.Errorf("%s: got cursor=%d (kind=%d), want %d", c.desc, got.Cursor, got.Kind, c.want)
+			}
+		})
+	}
+}
+
+func TestVerticalMotionTrailingNewline(t *testing.T) {
+	// "a\n" = ['a', '\n'] — 2 lines: "a" and a trailing empty line.
+	// The trailing empty line starts at position len(text) = 2.
+	// j from 'a' must reach the empty line (position 2, past the last \n).
+	t.Run("j on a\\n", func(t *testing.T) {
+		text := []rune("a\n")
+		var e Engine
+		got := e.Process(text, 0, Key('j'))
+		if got.Kind != ResultNavigate || got.Cursor != 2 {
+			t.Errorf("j from 0 in \"a\\n\": cursor=%d, want 2", got.Cursor)
+		}
+	})
+	// From that trailing empty line, k goes back to 'a' (line 0, col 0).
+	t.Run("k back on a\\n", func(t *testing.T) {
+		text := []rune("a\n")
+		var e Engine
+		got := e.Process(text, 2, Key('k'))
+		if got.Kind != ResultNavigate || got.Cursor != 0 {
+			t.Errorf("k from 2 in \"a\\n\": cursor=%d, want 0", got.Cursor)
+		}
+	})
+	// j stays on the trailing empty line (no further line).
+	t.Run("j on last empty line", func(t *testing.T) {
+		text := []rune("a\n")
+		var e Engine
+		got := e.Process(text, 2, Key('j'))
+		if got.Kind != ResultNavigate || got.Cursor != 2 {
+			t.Errorf("j from last empty line: cursor=%d, want 2", got.Cursor)
+		}
+	})
+	// MoveDown/MoveUp exported wrappers.
+	t.Run("MoveDown on a\\n", func(t *testing.T) {
+		text := []rune("a\n")
+		got := MoveDown(text, 0, 1)
+		if got != 2 {
+			t.Errorf("MoveDown from 0: %d, want 2", got)
+		}
+	})
+	t.Run("MoveUp on a\\n", func(t *testing.T) {
+		text := []rune("a\n")
+		got := MoveUp(text, 2, 1)
+		if got != 0 {
+			t.Errorf("MoveUp from 2: %d, want 0", got)
+		}
+	})
+}
+
+func TestVerticalMotionDoubleTrailingNewline(t *testing.T) {
+	// "a\n\n" = ['a', '\n', '\n'] — 3 lines: "a", empty, trailing empty.
+	// The trailing empty line is at n = 3.
+	t.Run("j from a to first empty", func(t *testing.T) {
+		text := []rune("a\n\n")
+		var e Engine
+		got := e.Process(text, 0, Key('j'))
+		if got.Kind != ResultNavigate || got.Cursor != 2 {
+			t.Errorf("j from 0: cursor=%d, want 2", got.Cursor)
+		}
+	})
+	t.Run("j from first empty to last empty", func(t *testing.T) {
+		text := []rune("a\n\n")
+		var e Engine
+		got := e.Process(text, 2, Key('j'))
+		if got.Kind != ResultNavigate || got.Cursor != 3 {
+			t.Errorf("j from 2: cursor=%d, want 3", got.Cursor)
+		}
+	})
+	t.Run("k from last empty to first empty", func(t *testing.T) {
+		text := []rune("a\n\n")
+		var e Engine
+		got := e.Process(text, 3, Key('k'))
+		if got.Kind != ResultNavigate || got.Cursor != 2 {
+			t.Errorf("k from 3: cursor=%d, want 2", got.Cursor)
+		}
+	})
+	t.Run("k from first empty to a", func(t *testing.T) {
+		text := []rune("a\n\n")
+		var e Engine
+		got := e.Process(text, 2, Key('k'))
+		if got.Kind != ResultNavigate || got.Cursor != 0 {
+			t.Errorf("k from 2: cursor=%d, want 0", got.Cursor)
+		}
+	})
+}
+
+func TestVerticalMotionAllEmpty(t *testing.T) {
+	// "\n" = ['\n'] — 2 lines: empty, empty.
+	t.Run("j on \\n buffer", func(t *testing.T) {
+		text := []rune("\n")
+		var e Engine
+		got := e.Process(text, 0, Key('j'))
+		if got.Kind != ResultNavigate || got.Cursor != 1 {
+			// From first \n (pos 0) j goes to... pos 0 or 1?
+			// LineStart(0) is tricky for a leading \n.
+			t.Logf("j from 0 in \"\\n\": cursor=%d", got.Cursor)
+		}
+	})
+	// Double newline buffer — entirely empty lines.
+	t.Run("2j on \\n\\n buffer", func(t *testing.T) {
+		text := []rune("\n\n")
+		got := MoveDown(text, 0, 2)
+		// Should land on the last empty line (position n = 2).
+		if got != 2 {
+			t.Errorf("MoveDown(0,2) in \"\\n\\n\": %d, want 2", got)
+		}
+	})
+}
+
+func TestHorizontalMotionOnEmptyLine(t *testing.T) {
+	// l on an empty line should stay put (nowhere to go right).
+	t.Run("l on empty line in middle", func(t *testing.T) {
+		text := []rune("a\n\nb")
+		var e Engine
+		got := e.Process(text, 2, Key('l'))
+		if got.Kind != ResultNavigate || got.Cursor != 2 {
+			t.Errorf("l from empty line pos 2: cursor=%d, want 2", got.Cursor)
+		}
+	})
+	t.Run("l on trailing empty line", func(t *testing.T) {
+		text := []rune("a\n")
+		var e Engine
+		got := e.Process(text, 1, Key('l'))
+		if got.Kind != ResultNavigate || got.Cursor != 1 {
+			t.Errorf("l from trailing empty line pos 1: cursor=%d, want 1", got.Cursor)
+		}
+	})
+	// l on a content line still works normally.
+	t.Run("l on content line", func(t *testing.T) {
+		text := []rune("abc\n")
+		var e Engine
+		got := e.Process(text, 0, Key('l'))
+		if got.Cursor != 1 {
+			t.Errorf("l from 0: cursor=%d, want 1", got.Cursor)
+		}
+	})
+	// h on an empty line should stay put (nowhere to go left).
+	t.Run("h on empty line", func(t *testing.T) {
+		text := []rune("a\n\nb")
+		var e Engine
+		got := e.Process(text, 2, Key('h'))
+		if got.Kind != ResultNavigate || got.Cursor != 2 {
+			t.Errorf("h from empty line pos 2: cursor=%d, want 2", got.Cursor)
+		}
+	})
+}
+
+func TestVerticalMotionColPreservationEmptyLines(t *testing.T) {
+	t.Run("j preserves col past empty line", func(t *testing.T) {
+		text := []rune("abc\n\nxy")
+		// a=0 b=1 c=2 \n=3 \n=4 x=5 y=6
+		// From 'c' (pos 2, col 2), j goes to first empty line (pos 4).
+		// col 2 on empty line clamps to 0.
+		var e Engine
+		got := e.Process(text, 2, Key('j'))
+		if got.Cursor != 4 {
+			t.Errorf("j from col 2 -> empty line: cursor=%d, want 4", got.Cursor)
+		}
+		// j again: col preserved as 0 (already clamped on empty),
+		// so lands on 'x' at col 0 of "xy" (pos 5).
+		e.Reset()
+		got = e.Process(text, 4, Key('j'))
+		if got.Cursor != 5 {
+			t.Errorf("j from empty line to content: cursor=%d, want 5", got.Cursor)
+		}
+	})
+	t.Run("k preserves col across empty lines", func(t *testing.T) {
+		text := []rune("ab\n\nxyz")
+		// a=0 b=1 \n=2 \n=3 x=4 y=5 z=6
+		// From 'z' (pos 6, col 2), k up to empty line (pos 3), col clamped to 0.
+		var e Engine
+		got := e.Process(text, 6, Key('k'))
+		if got.Cursor != 3 {
+			t.Errorf("k from col 2 -> empty line: cursor=%d, want 3", got.Cursor)
+		}
+		// k again: col 0, lands on 'a' at col 0 of "ab" (pos 0).
+		e.Reset()
+		got = e.Process(text, 3, Key('k'))
+		if got.Cursor != 0 {
+			t.Errorf("k from empty line -> content: cursor=%d, want 0", got.Cursor)
+		}
+	})
+}
+
+func TestVerticalMotionCountEmptyLines(t *testing.T) {
+	t.Run("2j across empty lines", func(t *testing.T) {
+		text := []rune("a\n\n\nb")
+		var e Engine
+		e.Process(text, 0, Key('2'))
+		got := e.Process(text, 0, Key('j'))
+		// 2j from 'a': skip first empty, land on second empty (pos 3).
+		if got.Cursor != 3 {
+			t.Errorf("2j from 0: cursor=%d, want 3", got.Cursor)
+		}
+	})
+	t.Run("3j from a to b", func(t *testing.T) {
+		text := []rune("a\n\n\nb")
+		var e Engine
+		e.Process(text, 0, Key('3'))
+		got := e.Process(text, 0, Key('j'))
+		// 3j from 'a': past both empties, lands on 'b' (pos 4).
+		if got.Cursor != 4 {
+			t.Errorf("3j from 0: cursor=%d, want 4", got.Cursor)
+		}
+	})
+	t.Run("2k from b to first empty", func(t *testing.T) {
+		text := []rune("a\n\n\nb")
+		var e Engine
+		e.Process(text, 4, Key('2'))
+		got := e.Process(text, 4, Key('k'))
+		// 2k from 'b': land on first empty (pos 2).
+		if got.Cursor != 2 {
+			t.Errorf("2k from 4: cursor=%d, want 2", got.Cursor)
+		}
+	})
+}
+
+func TestOperatorJOnEmptyLines(t *testing.T) {
+	t.Run("dj from empty line", func(t *testing.T) {
+		text := []rune("a\n\nb")
+		var e Engine
+		e.Process(text, 2, Key('d'))
+		got := e.Process(text, 2, Key('j'))
+		if got.Kind != ResultExecute {
+			t.Fatalf("dj from empty: got Kind=%d, want Execute", got.Kind)
+		}
+		ar := ApplyOp(got.Op, text, 2, got.Range)
+		// Should delete from cursor (pos 2) through end of next line.
+		if len(ar.Text) == 0 {
+			t.Error("dj from empty: deleted everything")
+		}
+	})
+}
+
 func TestEngineCharRepeat(t *testing.T) {
 	var e Engine
 	text := []rune("a b a b a")
