@@ -853,7 +853,7 @@ func moveVertical(text []rune, cursor int, count int) int {
 			lineStart = term + 1
 		}
 	} else {
-		for i := 0; i < -count; i++ {
+		for range -count {
 			if lineStart == 0 {
 				break // already at first line
 			}
@@ -925,11 +925,7 @@ func resolveMotionRange(text []rune, cursor int, mt motionType, count int) Range
 	switch mt {
 	case motionGG, motionG, motionJ, motionK:
 		// Linewise: from LineStart(cursor) to end of destination line.
-		start := LineStart(text, cursor)
-		end := dest
-		if end < start {
-			end, start = start, end
-		}
+		start, end := min(LineStart(text, cursor), dest), max(LineStart(text, cursor), dest)
 		// Extend end to include the full line.
 		lineEndPos := end
 		for lineEndPos < len(text) && text[lineEndPos] != '\n' {
@@ -1005,12 +1001,10 @@ func resolveMotionRange(text []rune, cursor int, mt motionType, count int) Range
 		return rangeFromCursor(text, cursor, dest, false)
 
 	case motionX:
-		e := max(cursor, min(cursor+count, len(text)))
-		return Range{cursor, e}
+		return Range{cursor, min(cursor+count, len(text))}
 
 	case motionXBack:
-		s := min(cursor, max(cursor-count, 0))
-		return Range{s, cursor}
+		return Range{max(cursor-count, 0), cursor}
 	}
 
 	return rangeFromCursor(text, cursor, dest, false)
@@ -1023,16 +1017,9 @@ func rangeFromCursor(text []rune, cursor int, dest int, inclusive bool) Range {
 		return Range{cursor, cursor}
 	}
 
-	start := cursor
-	end := dest
-	if dest < cursor {
-		start, end = dest, cursor
-	}
-
-	if inclusive {
-		if end < len(text) {
-			end++
-		}
+	start, end := min(cursor, dest), max(cursor, dest)
+	if inclusive && end < len(text) {
+		end++
 	}
 
 	return Range{start, end}
