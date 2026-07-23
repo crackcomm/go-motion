@@ -46,6 +46,9 @@ func ApplyOp(op Op, text []rune, pos int, r Range) ApplyResult {
 	}
 
 	if start == end {
+		if op == OpChange {
+			return ApplyResult{Text: text, Cursor: start, Insert: true}
+		}
 		return ApplyResult{Text: text, Cursor: pos, Empty: true}
 	}
 

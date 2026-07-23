@@ -495,6 +495,53 @@ func (e *Engine) lineOp(text []rune, cursor int, op Op, count int) Result {
 		start--
 	}
 
+	// cc: change content only, preserve \n and leading whitespace.
+	// Range goes from first non-blank (within this line) to the
+	// newline (exclusive). Unlike FirstNonBlank, we stay strictly
+	// within the current line so empty/blank lines don't bleed into
+	// the next line's content.
+	if op == OpChange {
+		lineStart := start
+		// Find the \n ending this line (exclusive bound).
+		lineEnd := lineStart
+		for lineEnd < n && text[lineEnd] != '\n' {
+			lineEnd++
+		}
+		// Empty line (no content between start and \n) — no-op.
+		if lineEnd == lineStart {
+			e.Reset()
+			return Result{
+				Kind:   ResultExecute,
+				Op:     op,
+				Range:  Range{lineStart, lineStart},
+				Insert: true,
+			}
+		}
+		// Find first non-whitespace within this line only.
+		fnb := lineStart
+		for fnb < lineEnd && (text[fnb] == ' ' || text[fnb] == '\t') {
+			fnb++
+		}
+		// If line is all whitespace — preserve it, cursor goes to
+		// end of preserved whitespace (same position as \n).
+		if fnb == lineEnd {
+			e.Reset()
+			return Result{
+				Kind:   ResultExecute,
+				Op:     op,
+				Range:  Range{lineEnd, lineEnd},
+				Insert: true,
+			}
+		}
+		e.Reset()
+		return Result{
+			Kind:   ResultExecute,
+			Op:     op,
+			Range:  Range{fnb, lineEnd},
+			Insert: true,
+		}
+	}
+
 	e.Reset()
 	return Result{
 		Kind:   ResultExecute,

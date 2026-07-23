@@ -1828,6 +1828,91 @@ func TestDDEmptyLine(t *testing.T) {
 		})
 	}
 }
+func TestEngineCC(t *testing.T) {
+	cases := []struct {
+		name       string
+		text       string
+		cursor     int
+		wantText   string
+		wantCursor int
+	}{
+		// Single line
+		{name: "single_line_start", text: "hello", cursor: 0, wantText: "", wantCursor: 0},
+		{name: "single_line_mid", text: "hello", cursor: 2, wantText: "", wantCursor: 0},
+		{name: "single_line_end", text: "hello", cursor: 4, wantText: "", wantCursor: 0},
+
+		// Single line with leading whitespace
+		{name: "single_line_indent_start", text: "  hello", cursor: 0, wantText: "  ", wantCursor: 2},
+		{name: "single_line_indent_mid", text: "  hello", cursor: 3, wantText: "  ", wantCursor: 2},
+		{name: "single_line_indent_end", text: "  hello", cursor: 7, wantText: "  ", wantCursor: 2},
+
+		// Single line with trailing newline
+		{name: "single_line_newline", text: "hello\n", cursor: 0, wantText: "\n", wantCursor: 0},
+		{name: "single_line_indent_newline", text: "  hello\n", cursor: 3, wantText: "  \n", wantCursor: 2},
+
+		// Two lines: cc on line 1
+		{name: "two_lines_line1_start", text: "hello\nworld", cursor: 0, wantText: "\nworld", wantCursor: 0},
+		{name: "two_lines_line1_mid", text: "hello\nworld", cursor: 2, wantText: "\nworld", wantCursor: 0},
+		{name: "two_lines_line1_end", text: "hello\nworld", cursor: 4, wantText: "\nworld", wantCursor: 0},
+
+		// Two lines: cc on line 2
+		{name: "two_lines_line2_start", text: "hello\nworld", cursor: 6, wantText: "hello\n", wantCursor: 6},
+		{name: "two_lines_line2_mid", text: "hello\nworld", cursor: 8, wantText: "hello\n", wantCursor: 6},
+
+		// Two lines with indent on line 1
+		{name: "two_lines_line1_indent", text: "  hello\nworld", cursor: 3, wantText: "  \nworld", wantCursor: 2},
+
+		// Two lines with indent on line 2
+		{name: "two_lines_line2_indent", text: "hello\n  world", cursor: 9, wantText: "hello\n  ", wantCursor: 8},
+
+		// Two lines with newlines
+		{name: "two_lines_line1_newline", text: "hello\nworld\n", cursor: 2, wantText: "\nworld\n", wantCursor: 0},
+		{name: "two_lines_line2_newline", text: "hello\nworld\n", cursor: 8, wantText: "hello\n\n", wantCursor: 6},
+
+		// Three lines: cc on each line
+		{name: "three_lines_line1", text: "a\nb\nc", cursor: 0, wantText: "\nb\nc", wantCursor: 0},
+		{name: "three_lines_line2", text: "a\nb\nc", cursor: 2, wantText: "a\n\nc", wantCursor: 2},
+		{name: "three_lines_line3", text: "a\nb\nc", cursor: 4, wantText: "a\nb\n", wantCursor: 4},
+
+		// Three lines with indent on line 2
+		{name: "three_lines_indent_line2", text: "a\n  b\nc", cursor: 4, wantText: "a\n  \nc", wantCursor: 4},
+
+		// Whitespace-only line — preserve whitespace, cursor at end
+		{name: "whitespace_only", text: "  \n", cursor: 0, wantText: "  \n", wantCursor: 2},
+
+		// Empty line in middle
+		{name: "empty_line_middle", text: "a\n\nc", cursor: 2, wantText: "a\n\nc", wantCursor: 2},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			text := []rune(c.text)
+			var e Engine
+			r1 := e.Process(text, c.cursor, Key('c'))
+			if r1.Kind != ResultNone {
+				t.Fatalf("first c: got Kind=%d, want ResultNone", r1.Kind)
+			}
+			r2 := e.Process(text, c.cursor, Key('c'))
+			if r2.Kind != ResultExecute {
+				t.Fatalf("cc: got Kind=%d, want ResultExecute", r2.Kind)
+			}
+			if r2.Op != OpChange {
+				t.Errorf("cc: got Op=%d, want OpChange", r2.Op)
+			}
+			if !r2.Insert {
+				t.Errorf("cc: Insert=false, want true")
+			}
+			ar := ApplyOp(r2.Op, text, c.cursor, r2.Range)
+			if got, want := string(ar.Text), c.wantText; got != want {
+				t.Errorf("cc: text=%q, want %q", got, want)
+			}
+			if ar.Cursor != c.wantCursor {
+				t.Errorf("cc: cursor=%d, want %d", ar.Cursor, c.wantCursor)
+			}
+		})
+	}
+}
+
 func TestEngineC(t *testing.T) {
 	cases := []struct {
 		desc   string
